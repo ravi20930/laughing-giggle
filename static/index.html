@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voice Recognition</title>
+</head>
+<body>
+
+<h1>Voice Recognition</h1>
+
+<div id="status"></div>
+<div id="result"></div>
+<button id="record-btn">Press and hold to record</button>
+
+<script src="https://cdn.webrtc-experiment.com/RecordRTC.js"></script>
+<script>
+window.onload = function() {
+    const statusDiv = document.getElementById('status');
+    const resultDiv = document.getElementById('result');
+    const recordBtn = document.getElementById('record-btn');
+    let recorder;
+
+    recordBtn.addEventListener('mousedown', startRecording);
+    recordBtn.addEventListener('mouseup', stopRecording);
+    recordBtn.addEventListener('touchstart', startRecording);
+    recordBtn.addEventListener('touchend', stopRecording);
+
+    function startRecording() {
+        statusDiv.textContent = 'Recording...';
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(function(stream) {
+                recorder = RecordRTC(stream, {
+                    type: 'audio',
+                    mimeType: 'audio/webm',
+                    recorderType: StereoAudioRecorder,
+                    timeSlice: 1000,
+                    ondataavailable: function(blob) {
+                        recognizeSpeech(blob);
+                    }
+                });
+                recorder.startRecording();
+            })
+            .catch(function(err) {
+                console.error('Error accessing microphone:', err);
+                statusDiv.textContent = 'Error accessing microphone';
+            });
+    }
+
+    function stopRecording() {
+        if (recorder) {
+            statusDiv.textContent = 'Processing...';
+            recorder.stopRecording(function() {
+                let audioBlob = recorder.getBlob();
+                convertBlobToWav(audioBlob, function(wavBlob) {
+                    recognizeSpeech(wavBlob);
+                });
+            });
+        }
+    }
+
+    function convertBlobToWav(blob, callback) {
+        let reader = new FileReader();
+        reader.readAsArrayBuffer(blob);
+        reader.onloadend = function() {
+            let audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            audioContext.decodeAudioData(reader.result, function(buffer) {
+                let wavBlob = new Blob([buffer], { type: 'audio/wav' });
+                callback(wavBlob);
+            });
+        };
+    }
+
+    function recognizeSpeech(audioBlob) {
+        // Send the audio blob to the backend for speech recognition processing
+        let formData = new FormData();
+        formData.append('audio', audioBlob);
+
+        fetch('/recognize', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            resultDiv.textContent = 'You said: ' + data.transcription;
+            statusDiv.textContent = 'Processing done';
+        })
+        .catch(error => {
+            console.error('Error recognizing speech:', error);
+            statusDiv.textContent = 'Error recognizing speech';
+        });
+    }
+};
+</script>
+
+</body>
+</html>
